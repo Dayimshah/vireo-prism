@@ -23,7 +23,7 @@ flowchart TB
 
     subgraph data["PostgreSQL 16"]
         AN["analytics · 4 materialized views"]
-        CO["core · 14 tables · events in 65 partitions"]
+        CO["core · 13 tables · events in 65 partitions"]
     end
 
     RD[("Redis 7<br/>optional")]

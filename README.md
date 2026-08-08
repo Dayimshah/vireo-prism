@@ -16,7 +16,7 @@ React 18 · Vite · Recharts          11 pages · 64 TS modules
         │  GET /api/v1/...
 FastAPI (:8010)                     55 operations · 4 layers
         │  asyncpg
-PostgreSQL 16                       14 tables · 4 matviews · 65 partitions
+PostgreSQL 16                       13 tables · 4 matviews · 65 partitions
 ```
 
 ## Quickstart
@@ -75,7 +75,7 @@ curl -s "http://localhost:8010/api/v1/kpi/dau?date_from=2026-07-01&date_to=2026-
 
 | | |
 | --- | --- |
-| **Warehouse** | 14 tables in `core`, 4 materialized views in `analytics`, 5 native enums, `events` range-partitioned monthly across 65 partitions (311 MB seeded) |
+| **Warehouse** | 13 tables in `core`, 4 materialized views in `analytics`, 5 native enums, `events` range-partitioned monthly across 65 partitions (311 MB seeded) |
 | **API** | 55 operations — 54 GET, 1 POST. `{data, meta}` envelope, RFC 7807 errors, cache-aside with Redis or an in-process LRU, token-bucket rate limiting, 8 uniform filters |
 | **SQL** | 51 `.sql` files across 15 namespaces plus 3 spliced fragments. No ORM in the read path — window functions, `PERCENTILE_CONT` and lateral joins are the whole point |
 | **Dashboard** | 11 pages, 64 TypeScript modules, Recharts, TanStack Query, light/dark |

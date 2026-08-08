@@ -168,7 +168,7 @@ erDiagram
     }
 ```
 
-Fourteen tables: six dimensions (`countries`, `devices`, `genres`,
+Thirteen tables: six dimensions (`countries`, `devices`, `genres`,
 `marketing_channels`, `personas`, `subscription_plans`), six facts (`users`,
 `sessions`, `events`, `subscriptions`, `experiments`, `experiment_assignments`),
 and `content`, which behaves as both.
