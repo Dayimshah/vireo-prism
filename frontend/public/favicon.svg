@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Prism">
+  <!-- A prism splitting one beam into a spectrum: white light in from the left, three
+       coloured beams out to the right. The mark reads at 16px because the triangle is
+       solid and the beams are thick. -->
+  <rect width="32" height="32" rx="7" fill="#0B1120" />
+  <path d="M4 17.5h7" stroke="#F8FAFC" stroke-width="2" stroke-linecap="round" />
+  <path d="M16 6.5 26.5 24.5h-21z" fill="none" stroke="#94A3B8" stroke-width="2" stroke-linejoin="round" />
+  <path d="M20 14.5 28 11" stroke="#F472B6" stroke-width="2" stroke-linecap="round" />
+  <path d="M20.5 17.5H29" stroke="#34D399" stroke-width="2" stroke-linecap="round" />
+  <path d="M20 20.5 28 24" stroke="#38BDF8" stroke-width="2" stroke-linecap="round" />
+</svg>

@@ -1,0 +1,116 @@
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "prism"
+version = "1.0.0"
+description = "Prism — the internal product analytics platform for Vireo, a fictional streaming service."
+readme = "../README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "MIT" }
+authors = [{ name = "Vireo Data Platform" }]
+keywords = ["analytics", "clickstream", "fastapi", "postgres", "product-analytics"]
+
+# ---------------------------------------------------------------------------
+# Dependencies are pinned exactly. This is an application, not a library:
+# reproducible builds matter more than dependency-resolution flexibility, and
+# the documented findings in docs/ are anchored to these versions.
+# To bump:  edit the pin -> `make lint test` -> commit the pin and the result.
+# ---------------------------------------------------------------------------
+dependencies = [
+  # Web layer
+  "fastapi==0.115.6",
+  "uvicorn[standard]==0.34.0",
+  "orjson==3.10.12",
+
+  # Validation & configuration
+  "pydantic==2.10.4",
+  "pydantic-settings==2.7.0",
+
+  # Database. asyncpg drives the API; psycopg 3 drives Alembic and the
+  # seeder's binary COPY path (asyncpg has no COPY-from-binary equivalent).
+  "sqlalchemy==2.0.36",
+  "asyncpg==0.30.0",
+  "psycopg[binary]==3.2.3",
+  "alembic==1.14.0",
+
+  # Observability
+  "structlog==24.4.0",
+
+  # Optional cache (the API degrades to an in-process LRU when unreachable)
+  "redis==5.2.1",
+
+  # Synthetic data generation & the data-quality report
+  "faker==33.1.0",
+  "pandas==2.2.3",
+  "plotly==5.24.1",
+  "python-dateutil==2.9.0.post0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==8.3.4",
+  "pytest-asyncio==0.25.0",
+  "httpx==0.28.1",
+  "ruff==0.8.4",
+  "mypy==1.14.0",
+  "coverage[toml]==7.6.10",
+]
+
+[project.scripts]
+# `prism-seed --profile medium` is equivalent to `python -m seeder --profile medium`
+prism-seed = "seeder.__main__:main"
+
+[tool.setuptools]
+packages = ["app", "seeder"]
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = [
+  "--strict-markers",
+  "--strict-config",
+  "-ra",
+]
+markers = [
+  "integration: requires a live seeded Postgres (skipped unless PRISM_TEST_DB is set)",
+  "slow: takes more than two seconds",
+]
+filterwarnings = ["error::DeprecationWarning"]
+
+# ---------------------------------------------------------------------------
+# mypy — strict on our code, forgiving about third-party stubs
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+plugins = ["pydantic.mypy"]
+files = ["app", "seeder"]
+
+[[tool.mypy.overrides]]
+module = ["plotly.*", "faker.*"]
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# coverage
+# ---------------------------------------------------------------------------
+[tool.coverage.run]
+source = ["app", "seeder"]
+branch = true
+omit = ["*/__main__.py"]
+
+[tool.coverage.report]
+skip_empty = true
+exclude_also = [
+  "if TYPE_CHECKING:",
+  "raise NotImplementedError",
+  "@overload",
+]

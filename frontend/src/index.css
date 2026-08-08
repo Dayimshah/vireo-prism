@@ -1,0 +1,247 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Design tokens.
+ *
+ * Every colour is declared here as an HSL triple and consumed through
+ * `tailwind.config.ts`, so a component never names a literal colour and never branches
+ * on theme. Adding `.dark` to <html> reassigns the same variables.
+ *
+ * The triples are bare (`222 47% 11%`, not `hsl(...)`) because Tailwind wraps them as
+ * `hsl(var(--x))`, which is what lets `bg-primary/60` work — an opacity modifier needs
+ * to inject alpha into the function, and it cannot do that to a finished colour string.
+ */
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    --primary: 221 83% 53%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 221 83% 53%;
+
+    /* Direction-of-travel, not good-or-bad. A tile decides which way is which from the
+       API's `higher_is_better`, so churn rising uses `negative` and churn falling uses
+       `positive` without either colour knowing what a churn is. */
+    --positive: 142 71% 35%;
+    --positive-foreground: 138 76% 97%;
+    --positive-muted: 141 79% 95%;
+
+    --negative: 0 72% 46%;
+    --negative-foreground: 0 86% 97%;
+    --negative-muted: 0 86% 97%;
+
+    /* Neither direction — a state that needs attention without being a failure. The API's
+       `degraded` health status is exactly this: a working service whose database is
+       migrated but unseeded. Painting it `negative` would send a reader looking for an
+       outage, and `muted` would let eleven empty dashboards look intentional. Dark enough
+       to pass as text on the light background, not only as a dot. */
+    --warning: 25 90% 37%;
+    --warning-foreground: 48 96% 97%;
+    --warning-muted: 48 96% 89%;
+
+    /* Categorical series. Hues are spaced far enough apart that neighbours stay
+       distinct in a stacked area chart, and lightness is held roughly constant so no
+       single series reads as "the important one". */
+    --chart-1: 221 83% 53%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 43 96% 46%;
+    --chart-4: 340 75% 55%;
+    --chart-5: 262 83% 58%;
+    --chart-6: 24 95% 53%;
+    --chart-7: 197 78% 43%;
+    --chart-8: 84 61% 43%;
+
+    /* Cohort heatmap ramp, light to dark in one hue. Sequential rather than
+       diverging: retention has no meaningful midpoint to diverge around. */
+    --heat-0: 214 95% 97%;
+    --heat-1: 213 94% 90%;
+    --heat-2: 212 96% 78%;
+    --heat-3: 217 91% 60%;
+    --heat-4: 221 83% 48%;
+    --heat-5: 224 76% 36%;
+
+    /* A NULL cohort cell means "this period has not elapsed yet", which is not a low
+       number. Painting it with a grey outside the ramp is the whole point: on the ramp
+       it would read as near-zero retention, which is a wrong reading of correct data. */
+    --heat-null: 215 20% 93%;
+
+    --radius: 0.625rem;
+  }
+
+  .dark {
+    --background: 222 47% 8%;
+    --foreground: 210 40% 96%;
+
+    --card: 222 44% 11%;
+    --card-foreground: 210 40% 96%;
+
+    --popover: 222 44% 11%;
+    --popover-foreground: 210 40% 96%;
+
+    --primary: 217 91% 60%;
+    --primary-foreground: 222 47% 11%;
+
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 96%;
+
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 217 33% 20%;
+    --accent-foreground: 210 40% 96%;
+
+    --destructive: 0 63% 50%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217 33% 20%;
+    --input: 217 33% 22%;
+    --ring: 217 91% 60%;
+
+    /* Lightened rather than reused: the light-mode greens and reds sit too dark against
+       an 8% background to read as text. */
+    --positive: 142 69% 48%;
+    --positive-foreground: 144 61% 10%;
+    --positive-muted: 144 40% 16%;
+
+    --negative: 0 84% 62%;
+    --negative-foreground: 0 60% 10%;
+    --negative-muted: 0 45% 18%;
+
+    --warning: 38 92% 58%;
+    --warning-foreground: 26 83% 10%;
+    --warning-muted: 32 45% 18%;
+
+    --chart-1: 217 91% 65%;
+    --chart-2: 173 58% 52%;
+    --chart-3: 43 96% 58%;
+    --chart-4: 340 82% 66%;
+    --chart-5: 262 83% 70%;
+    --chart-6: 24 95% 63%;
+    --chart-7: 197 78% 55%;
+    --chart-8: 84 61% 55%;
+
+    /* The ramp inverts: dark-to-light, so high retention is still the loudest cell
+       against a dark background. */
+    --heat-0: 222 44% 14%;
+    --heat-1: 221 45% 21%;
+    --heat-2: 222 55% 30%;
+    --heat-3: 221 70% 42%;
+    --heat-4: 217 85% 55%;
+    --heat-5: 212 96% 72%;
+
+    --heat-null: 217 25% 18%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    /* Anchor navigation should not land a heading underneath the sticky topbar. */
+    scroll-padding-top: 5rem;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings:
+      'cv02' 1,
+      'cv03' 1,
+      'cv04' 1;
+  }
+
+  /* Figures line up down a column. Applied to the elements that hold numbers rather
+     than globally, because tabular digits are wider and hurt prose. */
+  th,
+  td,
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Keyboard focus stays visible everywhere. Radix primitives manage their own rings,
+     so this is the floor for plain elements rather than an override. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  /* Honour the OS setting. A dashboard that animates for someone who asked it not to is
+     an accessibility failure, not a flourish. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* Scrollbars that do not shift layout when they appear. `scrollbar-gutter` is honoured
+     by Chromium and Firefox; Safari ignores it and simply overlays, which is acceptable. */
+  .scrollbar-stable {
+    scrollbar-gutter: stable;
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 0.5rem;
+    height: 0.5rem;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-border;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/*
+ * Print. A dashboard page is screenshotted into decks constantly, and the default print
+ * output wastes half the page on navigation chrome.
+ */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+
+    "noEmit": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "skipLibCheck": true,
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  /* `postcss.config.js` is deliberately plain JS and outside this project. Vite loads
+     it through postcss-load-config, whose TypeScript support depends on an optional
+     ts-node/jiti loader being present — a config that type-checks here but fails to
+     load at build time is worse than one that was never checked. */
+  "include": ["vite.config.ts", "tailwind.config.ts"]
+}

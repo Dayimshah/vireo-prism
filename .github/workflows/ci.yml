@@ -1,0 +1,246 @@
+# Continuous integration for Vireo/Prism.
+#
+# What this workflow does and does not claim
+# ------------------------------------------
+# The blocking jobs run the gates that genuinely pass today: the full 330-test
+# backend suite against a real seeded Postgres, lint and format over the test
+# tier, and the frontend's type-check, lint and production build.
+#
+# Two gates are deliberately NOT blocking, and the reason is recorded here rather
+# than hidden: `ruff check .` reports ~100 findings and `mypy` reports 15, all of
+# them in files delivered in earlier phases. Making CI green by rewriting those
+# files would be a large mechanical diff across working, reviewed code — the kind
+# of churn this project explicitly avoids. Making CI green by deleting the gates
+# would be worse: it would hide the debt. So they run in `advisory`, which reports
+# the counts on every push without failing the build.
+#
+# `prettier --check` is excluded for the same reason: it has never passed in this
+# repository. Its 34 findings are pure line-wrapping in delivered frontend files.
+#
+# So a green tick here means: the tests pass, the new code is clean, the frontend
+# compiles and builds. It does not mean the whole tree is lint-clean. The advisory
+# job is where that is tracked.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Allows a manual run from the Actions tab, which is useful for checking a
+  # change to this workflow without pushing a commit that only edits it.
+  workflow_dispatch:
+
+# A second push to the same branch cancels the first. Analytics test runs seed a
+# database and take a couple of minutes; queueing them serves nobody.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Pinned to the versions the Dockerfiles build against, so CI cannot pass on a
+  # runtime the project does not actually ship.
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
+
+jobs:
+  backend:
+    name: Backend (pytest, 330 tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        # Same image tag as docker-compose.yml.
+        image: postgres:16.6-alpine
+        env:
+          POSTGRES_USER: prism
+          POSTGRES_PASSWORD: prism
+          POSTGRES_DB: vireo
+        ports:
+          - 5432:5432
+        # Without this the first migration can race the server's own
+        # initialisation and fail with a connection error that looks like a
+        # configuration problem.
+        options: >-
+          --health-cmd "pg_isready -U prism -d vireo"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Settings are read from the environment with a `PRISM_` prefix and `__` as
+      # the nesting delimiter, so `PRISM_DB__HOST` sets `settings.db.host`. There
+      # is no compose file in play here, which is why every value is explicit.
+      PRISM_ENV: test
+      PRISM_LOG_JSON: "false"
+      PRISM_DB__HOST: localhost
+      PRISM_DB__PORT: "5432"
+      PRISM_DB__USER: prism
+      PRISM_DB__PASSWORD: prism
+      PRISM_DB__NAME: vireo
+      # Redis is optional by design and the cache falls back to a bounded
+      # in-process LRU. Disabling it keeps CI to one service while still
+      # exercising the cache path — the tagged codec runs on both backends
+      # deliberately, so the contract tests' HIT/MISS assertions still mean
+      # something.
+      PRISM_REDIS__ENABLED: "false"
+      PRISM_CACHE__ENABLED: "true"
+      # Opts into the integration tier. Any truthy value that is not a DSN means
+      # "use the database this process is already configured for", so no
+      # credential is restated on a command line.
+      PRISM_TEST_DB: "1"
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Apply migrations
+        run: alembic upgrade head
+
+      - name: Seed the dataset
+        # The smallest profile: 600 users, which is what the value assertions in
+        # tests/integration/test_query_values.py were verified against. Those
+        # assertions check identities and orderings rather than literal figures,
+        # so they hold at any scale — but a larger profile only costs CI minutes.
+        #
+        # The seeder refreshes the analytics materialized views on exit unless
+        # told not to, and the integration tier needs them populated: a matview
+        # created WITH NO DATA raises on any read.
+        run: python -m seeder --profile small --truncate
+
+      - name: Lint the test tier
+        # Scoped to `tests` rather than `.` — see the note at the top of this
+        # file. This is a real gate: it passes today and must keep passing.
+        run: |
+          ruff check tests/unit tests/integration
+          ruff format --check tests
+
+      - name: Run the suite
+        # Unit and integration together. 330 tests: 167 unit, 163 integration.
+        run: pytest -q
+
+  frontend:
+    name: Frontend (tsc, eslint, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        # `npm ci` rather than `npm install`: the lockfile is committed, and a
+        # resolution drift in CI is exactly what a lockfile exists to prevent.
+        run: npm ci
+
+      - name: Type-check
+        # `npm run typecheck` is `tsc --build --force`, and the `--build` matters.
+        # The root tsconfig.json is `{"files": [], "references": [...]}`, and a
+        # bare `tsc --noEmit` does NOT follow project references — it checks zero
+        # files and exits 0. That produced a run of vacuous green results during
+        # phase 11 while two real type errors sat in the tree. `--build` walks the
+        # referenced projects and checks all 64 files.
+        run: npm run typecheck
+
+      - name: Lint
+        # Errors fail; the seven `react-refresh/only-export-components` warnings
+        # in the shadcn-style component files are the intended idiom there and are
+        # reported without failing.
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload the built bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: frontend/dist
+          retention-days: 7
+
+  advisory:
+    name: Advisory (pre-existing debt, non-blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Never blocks a merge. The point is a visible, dated count on every push, so
+    # the debt is tracked rather than either faked away or silently forgotten.
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Whole-tree ruff, ruff format and mypy
+        working-directory: backend
+        # `|| true` per command so one failure does not mask the next: the value
+        # here is the three counts side by side, not an exit status.
+        run: |
+          echo "### Backend advisory gates" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "-- ruff check . --------------------------------------------" >> "$GITHUB_STEP_SUMMARY"
+          ruff check . --output-format=concise 2>&1 | tail -5 >> "$GITHUB_STEP_SUMMARY" || true
+
+          echo "-- ruff format --check . ----------------------------------" >> "$GITHUB_STEP_SUMMARY"
+          ruff format --check . 2>&1 | tail -3 >> "$GITHUB_STEP_SUMMARY" || true
+
+          echo "-- mypy (app, seeder) ------------------------------------" >> "$GITHUB_STEP_SUMMARY"
+          mypy 2>&1 | tail -3 >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "These findings are in files delivered in earlier phases. See the" >> "$GITHUB_STEP_SUMMARY"
+          echo "note at the top of .github/workflows/ci.yml for why they are not" >> "$GITHUB_STEP_SUMMARY"
+          echo "blocking." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Frontend prettier
+        working-directory: frontend
+        run: |
+          npm ci --ignore-scripts
+          echo "### Frontend advisory gates" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          npm run format:check 2>&1 | tail -8 >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

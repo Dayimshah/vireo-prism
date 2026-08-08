@@ -1,0 +1,280 @@
+# ===========================================================================
+# Prism — Vireo Product Analytics Platform
+# ---------------------------------------------------------------------------
+# Five services, no more:
+#
+#   postgres  the warehouse (13 core tables + 4 analytics materialized views)
+#   redis     optional cache; the API degrades to an in-process LRU without it
+#   api       FastAPI read-only analytics service, applies migrations on boot
+#   web       React dashboard, built to static assets and served by nginx
+#   seeder    one-shot synthetic data generator, gated behind a compose profile
+#
+# Quick start
+#   cp .env.example .env
+#   docker compose up -d           # schema is applied automatically by `api`
+#   docker compose --profile seed run --rm seeder
+#   open http://localhost:5173
+#
+# Everything below reads from `.env`. The `${VAR:-default}` fallbacks mean the
+# stack still starts if you forgot to copy the file, just with dev defaults.
+# ===========================================================================
+
+name: vireo-prism
+
+# ---------------------------------------------------------------------------
+# Shared building blocks. Anchors keep the four Postgres-dependent services in
+# agreement about credentials — one edit, not four.
+# ---------------------------------------------------------------------------
+x-db-env: &db-env
+  PRISM_DB__HOST: postgres
+  PRISM_DB__PORT: "5432"
+  PRISM_DB__USER: ${POSTGRES_USER:-prism}
+  PRISM_DB__PASSWORD: ${POSTGRES_PASSWORD:-prism}
+  PRISM_DB__NAME: ${POSTGRES_DB:-vireo}
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # -------------------------------------------------------------------------
+  # PostgreSQL 16 — tuned for an analytical workload, not OLTP defaults.
+  #
+  # The `command` overrides matter here: window-function-heavy queries over 3.4M
+  # event rows spill to disk with the stock 4MB work_mem. The values below are
+  # sized for a developer laptop with ~8GB free, deliberately conservative.
+  # -------------------------------------------------------------------------
+  postgres:
+    image: postgres:16.6-alpine
+    container_name: prism-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-prism}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-prism}
+      POSTGRES_DB: ${POSTGRES_DB:-vireo}
+      # Faster index builds during migration and seeding.
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+      PGDATA: /var/lib/postgresql/data/pgdata
+    command:
+      - postgres
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - effective_cache_size=1536MB
+      - -c
+      - work_mem=32MB                    # per sort/hash node; analytics needs it
+      - -c
+      - maintenance_work_mem=256MB       # index creation, VACUUM, MV refresh
+      - -c
+      - max_wal_size=4GB                 # bulk COPY generates a lot of WAL
+      - -c
+      - checkpoint_completion_target=0.9
+      - -c
+      - random_page_cost=1.1             # assume SSD
+      - -c
+      - effective_io_concurrency=200
+      - -c
+      - max_parallel_workers_per_gather=4
+      - -c
+      - enable_partitionwise_aggregate=on   # events is range-partitioned monthly
+      - -c
+      - enable_partitionwise_join=on
+      - -c
+      - track_io_timing=on               # makes EXPLAIN (ANALYZE, BUFFERS) useful
+      - -c
+      - pg_stat_statements.track=all
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+    ports:
+      # Bound to loopback on purpose: the dev password is weak and this port
+      # should not be reachable from the local network.
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    # Analytical hash joins use shared memory; the 64MB default is too small.
+    shm_size: 512mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-prism} -d ${POSTGRES_DB:-vireo} -q"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    logging: *default-logging
+    networks: [prism]
+
+  # -------------------------------------------------------------------------
+  # Redis 7 — cache-aside for query results. Genuinely optional: set
+  # PRISM_REDIS__ENABLED=false, or just stop this container, and the API keeps
+  # serving from its bounded in-process LRU.
+  # -------------------------------------------------------------------------
+  redis:
+    image: redis:7.4-alpine
+    container_name: prism-redis
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - allkeys-lru          # a cache, not a store; evicting is correct
+      - --save
+      - ""                   # no RDB snapshots, nothing here is durable
+      - --appendonly
+      - "no"
+    ports:
+      - "127.0.0.1:${REDIS_HOST_PORT:-6380}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+    logging: *default-logging
+    networks: [prism]
+
+  # -------------------------------------------------------------------------
+  # FastAPI analytics service.
+  #
+  # `alembic upgrade head` runs before uvicorn so a clean clone reaches a
+  # working schema with a single `docker compose up`. It is idempotent, so
+  # restarts are free. In a real deployment this would be a separate job in the
+  # release pipeline rather than an app-boot side effect — noted as a
+  # deliberate demo trade-off in docs/decisions.md.
+  # -------------------------------------------------------------------------
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: prism-api
+    restart: unless-stopped
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        echo "[api] applying migrations..."
+        alembic upgrade head
+        echo "[api] starting uvicorn on :8000"
+        exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'
+    environment:
+      <<: *db-env
+      PRISM_ENV: ${PRISM_ENV:-development}
+      PRISM_DEBUG: ${PRISM_DEBUG:-false}
+      PRISM_LOG_LEVEL: ${PRISM_LOG_LEVEL:-INFO}
+      PRISM_LOG_JSON: ${PRISM_LOG_JSON:-true}
+      PRISM_REDIS__ENABLED: ${PRISM_REDIS__ENABLED:-true}
+      PRISM_REDIS__HOST: redis
+      PRISM_REDIS__PORT: "6379"
+      PRISM_CACHE__ENABLED: ${PRISM_CACHE__ENABLED:-true}
+      PRISM_API__CORS_ORIGINS: ${PRISM_API__CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      PRISM_API__ADMIN_KEY: ${PRISM_API__ADMIN_KEY:-local-dev-admin-key}
+    ports:
+      - "${API_HOST_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        # Not `service_healthy`: Redis being down must never block the API.
+        condition: service_started
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import urllib.request,sys;
+          sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health',
+          timeout=3).status == 200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 40s        # generous: covers first-run migrations
+    logging: *default-logging
+    networks: [prism]
+
+  # -------------------------------------------------------------------------
+  # React dashboard, compiled to static assets and served by nginx.
+  #
+  # VITE_* values are build-time arguments because Vite inlines them into the
+  # bundle — they cannot be changed by restarting the container. Iterating on
+  # frontend code? Run `make web-dev` on the host for hot reload instead of
+  # rebuilding this image.
+  # -------------------------------------------------------------------------
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000/api/v1}
+        VITE_APP_NAME: ${VITE_APP_NAME:-Prism}
+        VITE_ORG_NAME: ${VITE_ORG_NAME:-Vireo}
+    container_name: prism-web
+    restart: unless-stopped
+    ports:
+      - "${WEB_HOST_PORT:-5173}:80"
+    depends_on:
+      api:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:80/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 10s
+    logging: *default-logging
+    networks: [prism]
+
+  # -------------------------------------------------------------------------
+  # Synthetic data generator — one-shot, behind the `seed` profile so it never
+  # starts with `docker compose up`.
+  #
+  #   docker compose --profile seed run --rm seeder
+  #   docker compose --profile seed run --rm seeder --profile small --truncate
+  #
+  # Reuses the api image (same dependencies, different entrypoint) so there is
+  # nothing extra to build. Migrations run first, making the seeder usable
+  # against a bare database.
+  # -------------------------------------------------------------------------
+  seeder:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: runtime
+    image: vireo-prism-api
+    container_name: prism-seeder
+    profiles: ["seed"]
+    entrypoint:
+      - sh
+      - -c
+      - 'alembic upgrade head && exec python -m seeder "$$@"'
+      - --
+    # Overridable: anything after the service name on the command line lands here.
+    command: ["--profile", "${PRISM_SEED__PROFILE:-medium}", "--truncate"]
+    environment:
+      <<: *db-env
+      PRISM_ENV: ${PRISM_ENV:-development}
+      PRISM_LOG_LEVEL: ${PRISM_LOG_LEVEL:-INFO}
+      PRISM_LOG_JSON: "false"          # human-readable progress while generating
+      PRISM_SEED__PROFILE: ${PRISM_SEED__PROFILE:-medium}
+      PRISM_SEED__RANDOM_SEED: ${PRISM_SEED__RANDOM_SEED:-20240817}
+      PRISM_SEED__WINDOW_MONTHS: ${PRISM_SEED__WINDOW_MONTHS:-18}
+      PRISM_SEED__COPY_BATCH_ROWS: ${PRISM_SEED__COPY_BATCH_ROWS:-50000}
+    volumes:
+      # The Plotly data-quality report is written to the host so it survives
+      # `--rm` and can be opened in a browser / committed to docs/.
+      - ./docs:/app/docs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging: *default-logging
+    networks: [prism]
+
+volumes:
+  postgres-data:
+    name: vireo-prism-pgdata
+
+networks:
+  prism:
+    name: vireo-prism-net
+    driver: bridge

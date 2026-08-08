@@ -1,0 +1,44 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+
+    /* Vite compiles; tsc only checks. */
+    "noEmit": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+
+    /* The whole point of putting TypeScript in front of 54 endpoints. */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true,
+
+    /* Every nullable metric in this API is `T | null`, and `null` means "undefined
+       figure", never zero. Without this, `rows[0]` on an empty response types as a row
+       and reading `.dau` off undefined is a runtime crash TypeScript claimed was safe. */
+    "noUncheckedIndexedAccess": true,
+
+    /* `exactOptionalPropertyTypes` is deliberately OFF. It is the right rule for code
+       that owns its own interfaces, and a poor fit against Radix and Recharts, where
+       forwarding a possibly-undefined value into an optional prop is the normal idiom
+       and every such call site would need a conditional spread. The mistake it prevents
+       — a present-but-undefined property — is not one this codebase can make: the API
+       models it as `T | null`, which is a value, not an absent key. */
+
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src"]
+}

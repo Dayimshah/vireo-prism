@@ -1,0 +1,69 @@
+# Ruff replaces flake8 + isort + pyupgrade + several plugins in one binary.
+# Enforces the PEP 8 / type-hint / docstring standard the project claims.
+
+target-version = "py312"
+line-length = 100
+src = ["."]
+extend-exclude = ["alembic/versions/*.pyi"]
+
+[lint]
+select = [
+  "E", "W",    # pycodestyle  — PEP 8
+  "F",         # pyflakes
+  "I",         # isort        — deterministic import order
+  "N",         # pep8-naming
+  "D",         # pydocstyle   — docstrings are a stated requirement
+  "UP",        # pyupgrade    — modern syntax for the target version
+  "ANN",       # flake8-annotations — type hints are a stated requirement
+  "B",         # flake8-bugbear
+  "A",         # flake8-builtins
+  "C4",        # flake8-comprehensions
+  "DTZ",       # flake8-datetimez — naive datetimes are a real bug class here
+  "T20",       # flake8-print — no stray print() in app code
+  "SIM",       # flake8-simplify
+  "TCH",       # flake8-type-checking
+  "PTH",       # flake8-use-pathlib
+  "RUF",       # ruff-specific
+  "S",         # flake8-bandit — security
+  "PL",        # pylint subset
+]
+
+ignore = [
+  "D203",    # conflicts with D211 (blank line before class docstring)
+  "D213",    # conflicts with D212 (multi-line summary position)
+  "ANN401",  # allow explicit Any where a boundary genuinely is untyped
+  "PLR0913", # generator functions legitimately take many tuning parameters
+  "S101",    # assert is how the seeder enforces data invariants
+]
+
+[lint.per-file-ignores]
+# Alembic revisions are generated stubs with a fixed shape.
+"alembic/versions/*.py" = ["D103", "D100", "ANN201", "E501", "INP001"]
+"alembic/env.py" = ["D100", "D103", "ANN201", "INP001"]
+# Tests: no docstring police, magic numbers are the point, fixtures shadow names.
+"tests/*" = ["D100", "D101", "D102", "D103", "ANN", "PLR2004", "S105", "S106"]
+# The seeder's report writer legitimately prints progress to a console.
+"seeder/__main__.py" = ["T20"]
+"seeder/report.py" = ["T20"]
+
+[lint.pydocstyle]
+convention = "google"
+
+[lint.isort]
+known-first-party = ["app", "seeder"]
+combine-as-imports = true
+force-sort-within-sections = true
+
+[lint.flake8-type-checking]
+runtime-evaluated-base-classes = [
+  "pydantic.BaseModel",
+  "pydantic_settings.BaseSettings",
+  "sqlalchemy.orm.DeclarativeBase",
+]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "lf"
+docstring-code-format = true

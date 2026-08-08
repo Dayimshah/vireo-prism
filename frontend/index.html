@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="description"
+      content="Prism — product analytics for Vireo. Engagement, retention, funnels, cohorts, monetization and experiments."
+    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Prism</title>
+
+    <!--
+      Theme applied before first paint.
+
+      React cannot do this: the bundle is fetched, parsed and mounted after the browser
+      has already painted the background, so a dark-mode reader gets a white flash on
+      every navigation. Reading the stored choice synchronously here costs one localStorage
+      hit and removes the flash entirely.
+
+      Wrapped in try/catch because localStorage throws outright — not returns null — when
+      cookies are blocked or the page is in a partitioned third-party context. An
+      exception here would abort the inline script and leave the app unstyled.
+    -->
+    <script>
+      ;(function () {
+        try {
+          var stored = localStorage.getItem('prism.theme')
+          var dark =
+            stored === 'dark' ||
+            (stored !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          if (dark) document.documentElement.classList.add('dark')
+        } catch (_) {
+          /* No stored preference reachable; the CSS default (light) stands. */
+        }
+      })()
+    </script>
+  </head>
+  <body class="h-full">
+    <div id="root" class="h-full"></div>
+
+    <noscript>
+      <div style="padding: 2rem; font-family: system-ui, sans-serif">
+        <h1>Prism needs JavaScript</h1>
+        <p>
+          This dashboard renders charts in the browser. The underlying API is a plain REST
+          service and works without it — see <code>/api/v1/docs</code>.
+        </p>
+      </div>
+    </noscript>
+
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

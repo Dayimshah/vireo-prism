@@ -1,0 +1,457 @@
+// =============================================================================
+// Vireo/Prism — DAX measures
+//
+// Paste into Power BI Desktop as measures on the table named in each section
+// header. Requires the star schema from powerbi/01_star_schema.sql and the model
+// relationships listed in docs/powerbi.md.
+//
+// Two conventions carried over from the rest of the project, and both matter:
+//
+// 1. A BLANK is an undefined figure, never zero. DIVIDE() returns BLANK on a zero
+//    denominator rather than an error or a zero, which is exactly the behaviour
+//    wanted: a day with no sessions has no average session length, and charting
+//    that as 0 would assert a measurement nobody made. Do NOT wrap these in
+//    IFERROR(..., 0) or COALESCE(..., 0) — that would break the distinction the
+//    whole stack maintains. Set "Show items with no data" off rather than filling
+//    blanks.
+//
+// 2. Percentages are returned as percentage points (51.1 means 51.1%), matching
+//    the API's `_pct` columns. Format them with 0 decimal places and a literal
+//    "%" suffix, NOT with Power BI's percentage format, which would multiply by
+//    100 a second time. The one place the source uses a 0-1 fraction
+//    (completion_rate) is already restated as completion_rate_pct in dim_user.
+//
+// Time intelligence requires dim_date marked as the date table. Without that,
+// DATESINPERIOD and DATEADD silently return wrong windows rather than failing.
+// =============================================================================
+
+
+// -----------------------------------------------------------------------------
+// fact_user_daily — activity and engagement
+// -----------------------------------------------------------------------------
+
+// Distinct users active in the filter context. Because fact_user_daily has no row
+// for an inactive day, this counts genuine activity rather than assuming presence.
+DAU =
+DISTINCTCOUNT ( fact_user_daily[user_key] )
+
+// Rolling 7- and 28-day windows, not calendar weeks and months. A calendar-week
+// measure jumps every Monday and makes a trend unreadable; rolling windows are
+// what the API returns and what the dashboard plots, so these agree with it.
+//
+// MAX(dim_date[date_key]) rather than LASTDATE(): identical here, and the intent
+// reads more plainly.
+WAU =
+CALCULATE (
+    [DAU],
+    DATESINPERIOD ( dim_date[date_key], MAX ( dim_date[date_key] ), -7, DAY )
+)
+
+MAU =
+CALCULATE (
+    [DAU],
+    DATESINPERIOD ( dim_date[date_key], MAX ( dim_date[date_key] ), -28, DAY )
+)
+
+// DAU as a percentage of MAU. Scale-free, so it cannot be inflated by acquisition
+// alone — which is why it is the retention headline rather than raw DAU.
+//
+// BLANK when MAU is zero. The delivered SQL behaves the same way; see the
+// stickiness note in docs/analytics-catalog.md for why 0% is arguably more
+// defensible and why the project nonetheless returns null.
+Stickiness % =
+DIVIDE ( [DAU], [MAU] ) * 100
+
+Sessions = SUM ( fact_user_daily[sessions] )
+Events   = SUM ( fact_user_daily[events] )
+
+Watch Hours = SUM ( fact_user_daily[watch_hours] )
+
+Sessions per Active User =
+DIVIDE ( [Sessions], [DAU] )
+
+Watch Hours per Active User =
+DIVIDE ( [Watch Hours], [DAU] )
+
+Events per Session =
+DIVIDE ( [Events], [Sessions] )
+
+Videos Started   = SUM ( fact_user_daily[started_videos] )
+Videos Completed = SUM ( fact_user_daily[completed_videos] )
+Videos Abandoned = SUM ( fact_user_daily[abandoned_videos] )
+
+// Of the titles started in this context, what share reached the completion
+// threshold. BLANK when nothing was started — not 0%, which would read as "people
+// started things and finished none".
+Completion Rate % =
+DIVIDE ( [Videos Completed], [Videos Started] ) * 100
+
+Searches         = SUM ( fact_user_daily[searches] )
+Subscribe Clicks = SUM ( fact_user_daily[subscribe_clicks] )
+
+// New users, taken from the signup-day flag on the activity spine rather than
+// from dim_user[signup_date]. Both are correct; this one respects whatever date
+// filter is applied to the fact without needing a second active relationship.
+New Users =
+CALCULATE (
+    [DAU],
+    KEEPFILTERS ( fact_user_daily[is_signup_day] = TRUE )
+)
+
+Returning Users =
+[DAU] - [New Users]
+
+New User Share % =
+DIVIDE ( [New Users], [DAU] ) * 100
+
+
+// -----------------------------------------------------------------------------
+// Period-over-period
+//
+// Every delta measure is BLANK when the prior period has no data, rather than
+// showing +100%. A "growth" figure computed against an empty baseline is
+// meaningless, and a KPI card showing +100% on the first day of the dataset is
+// the most common way a BI report loses trust.
+// -----------------------------------------------------------------------------
+
+DAU LM =
+CALCULATE ( [DAU], DATEADD ( dim_date[date_key], -1, MONTH ) )
+
+DAU MoM % =
+VAR Prior = [DAU LM]
+RETURN
+    IF ( NOT ISBLANK ( Prior ) && Prior <> 0, DIVIDE ( [DAU] - Prior, Prior ) * 100 )
+
+Watch Hours LM =
+CALCULATE ( [Watch Hours], DATEADD ( dim_date[date_key], -1, MONTH ) )
+
+Watch Hours MoM % =
+VAR Prior = [Watch Hours LM]
+RETURN
+    IF ( NOT ISBLANK ( Prior ) && Prior <> 0, DIVIDE ( [Watch Hours] - Prior, Prior ) * 100 )
+
+// NOTE: there is deliberately no "Current MRR MoM %" here, and the reason is a
+// modelling fact worth understanding rather than a gap.
+//
+// [Current MRR] sums dim_user[current_mrr_usd]. Filters in a star schema flow from
+// the one-side to the many-side: dim_date filters the fact tables, but nothing
+// propagates back up into dim_user. So DATEADD over [Current MRR] returns the same
+// figure for every period, and a MoM measure built on it would show 0% forever —
+// wrong in the worst way, because it looks like a finding ("MRR is flat") rather
+// than like a broken measure.
+//
+// Current MRR is a population snapshot: "what is being billed right now". For MRR
+// *over time*, use the fact_subscription measures below, which are dated by
+// contract start and end.
+New MRR LM =
+CALCULATE ( [New MRR], DATEADD ( dim_date[date_key], -1, MONTH ) )
+
+New MRR MoM % =
+VAR Prior = [New MRR LM]
+RETURN
+    IF ( NOT ISBLANK ( Prior ) && Prior <> 0, DIVIDE ( [New MRR] - Prior, Prior ) * 100 )
+
+
+// -----------------------------------------------------------------------------
+// dim_user — population, monetization, churn
+//
+// These count users, so they are unaffected by the date filter on the activity
+// facts unless a relationship carries it. That is intentional: "how many users are
+// premium" is a question about the population, not about a window.
+// -----------------------------------------------------------------------------
+
+Users = COUNTROWS ( dim_user )
+
+Premium Users =
+CALCULATE ( [Users], KEEPFILTERS ( dim_user[is_premium] = TRUE ) )
+
+Premium Share % =
+DIVIDE ( [Premium Users], [Users] ) * 100
+
+Paying Users =
+CALCULATE ( [Users], KEEPFILTERS ( dim_user[has_active_subscription] = TRUE ) )
+
+// Users who ever paid, which is the conversion denominator's numerator — distinct
+// from Paying Users, who are paying *now*. Conflating the two understates
+// conversion by the churned share, and at the small profile 58% of users have
+// churned, so the gap is large.
+Ever Converted =
+CALCULATE ( [Users], KEEPFILTERS ( dim_user[subscription_count] > 0 ) )
+
+Conversion Rate % =
+DIVIDE ( [Ever Converted], [Users] ) * 100
+
+Trial Conversions =
+CALCULATE ( [Users], KEEPFILTERS ( dim_user[ever_converted_trial] = TRUE ) )
+
+Current MRR = SUM ( dim_user[current_mrr_usd] )
+
+Lifetime Revenue = SUM ( dim_user[lifetime_revenue_usd] )
+
+ARPU =
+DIVIDE ( [Current MRR], [Users] )
+
+// Average revenue per *paying* user. Always at least ARPU, and the gap between
+// them is the free-tier drag — worth showing both rather than picking one.
+ARPPU =
+DIVIDE ( [Current MRR], [Paying Users] )
+
+Churned Users =
+CALCULATE ( [Users], KEEPFILTERS ( dim_user[has_churned] = TRUE ) )
+
+Churn Rate % =
+DIVIDE ( [Churned Users], [Users] ) * 100
+
+Retained Users =
+[Users] - [Churned Users]
+
+Avg Tenure Days =
+AVERAGE ( dim_user[tenure_days] )
+
+// Mean over churned users only. Including active users would mix a completed
+// lifetime with a censored one and understate the true figure — the same
+// right-censoring problem the retention curves handle explicitly.
+Avg Lifetime Days (Churned) =
+CALCULATE (
+    AVERAGE ( dim_user[tenure_days] ),
+    KEEPFILTERS ( dim_user[has_churned] = TRUE )
+)
+
+// LTV:CAC by channel. Reads as directional at the small profile, not as a
+// per-channel ranking — measured Spearman ρ against the planted coefficients is
+// 0.71, and the smallest channels hold 7 users. See docs/analytics-catalog.md.
+LTV to CAC =
+VAR Cac = AVERAGE ( dim_channel[cac_usd] )
+RETURN
+    DIVIDE ( DIVIDE ( [Lifetime Revenue], [Users] ), Cac )
+
+
+// -----------------------------------------------------------------------------
+// fact_session_funnel — funnel and session shape
+//
+// The n_* integer columns exist so these are SUMs rather than boolean averages.
+// -----------------------------------------------------------------------------
+
+Funnel Sessions = COUNTROWS ( fact_session_funnel )
+
+Step Open App        = SUM ( fact_session_funnel[n_open_app] )
+Step Browse          = SUM ( fact_session_funnel[n_browse] )
+Step Search          = SUM ( fact_session_funnel[n_search] )
+Step View Content    = SUM ( fact_session_funnel[n_view_content] )
+Step Watch Trailer   = SUM ( fact_session_funnel[n_watch_trailer] )
+Step Start Video     = SUM ( fact_session_funnel[n_start_video] )
+Step Complete Video  = SUM ( fact_session_funnel[n_complete_video] )
+Step Subscribe Click = SUM ( fact_session_funnel[n_subscribe_click] )
+
+// End-to-end discovery-to-watch rate. The stage-by-stage rates below multiply to
+// this figure to within rounding — an identity the integration suite asserts, and
+// a useful check that a filter has not been applied to only part of a visual.
+Discovery to Watch % =
+DIVIDE ( [Step Start Video], [Step Open App] ) * 100
+
+Open to View %      = DIVIDE ( [Step View Content],   [Step Open App] ) * 100
+View to Start %     = DIVIDE ( [Step Start Video],    [Step View Content] ) * 100
+Start to Complete % = DIVIDE ( [Step Complete Video], [Step Start Video] ) * 100
+
+Trailer to Start % =
+DIVIDE ( [Step Start Video], [Step Watch Trailer] ) * 100
+
+// Median rather than mean: session durations are right-skewed, and a handful of
+// very long sessions pull the mean above the typical experience. The delivered API
+// returns percentiles for the same reason.
+Median Session Duration (s) =
+MEDIAN ( fact_session_funnel[session_duration_seconds] )
+
+Avg Session Duration (s) =
+AVERAGE ( fact_session_funnel[session_duration_seconds] )
+
+// Time between funnel steps. AVERAGE ignores BLANKs, which is correct here: a
+// session that never reached the later step has no elapsed time, and treating
+// that as zero would drag the average toward zero exactly when conversion is
+// worst.
+Avg Seconds Open to View =
+AVERAGE ( fact_session_funnel[seconds_open_to_view] )
+
+Avg Seconds View to Start =
+AVERAGE ( fact_session_funnel[seconds_view_to_start] )
+
+First Sessions =
+CALCULATE (
+    [Funnel Sessions],
+    KEEPFILTERS ( fact_session_funnel[is_first_session] = TRUE )
+)
+
+
+// -----------------------------------------------------------------------------
+// fact_content_daily — catalogue performance
+// -----------------------------------------------------------------------------
+
+Content Watch Hours = SUM ( fact_content_daily[watch_hours] )
+Content Starts      = SUM ( fact_content_daily[starts] )
+Content Completions = SUM ( fact_content_daily[completions] )
+Content Abandons    = SUM ( fact_content_daily[abandons] )
+Unique Viewers      = SUM ( fact_content_daily[unique_viewers] )
+Trailer Views       = SUM ( fact_content_daily[trailer_views] )
+Watchlist Adds      = SUM ( fact_content_daily[watchlist_adds] )
+
+Content Completion Rate % =
+DIVIDE ( [Content Completions], [Content Starts] ) * 100
+
+Abandon Rate % =
+DIVIDE ( [Content Abandons], [Content Starts] ) * 100
+
+// Weighted by ratings rather than a mean of means: AVERAGE(avg_rating) would give
+// a title rated once the same weight as one rated a thousand times.
+Avg Rating =
+DIVIDE (
+    SUMX ( fact_content_daily, fact_content_daily[avg_rating] * fact_content_daily[ratings] ),
+    SUM ( fact_content_daily[ratings] )
+)
+
+Titles with Activity =
+DISTINCTCOUNT ( fact_content_daily[content_key] )
+
+// Share of the catalogue that saw any activity in the filter context. A low figure
+// here is the "long tail is dead weight" finding, and it is real: popularity is
+// Beta-distributed by design.
+Catalogue Coverage % =
+DIVIDE ( [Titles with Activity], COUNTROWS ( dim_content ) ) * 100
+
+// Concentration: what share of watch time the top 20 titles take. TOPN evaluates
+// over the current filter context, so a genre or date slicer narrows the ranking
+// rather than being ignored.
+//
+// Put this on a card or a by-genre table. It is meaningless in a visual already
+// broken out by title — every row would read 100% or blank, because a single title
+// either is or is not in its own top 20.
+Top 20 Share of Watch Hours % =
+VAR TopTitles =
+    TOPN ( 20, VALUES ( dim_content[content_key] ), [Content Watch Hours], DESC )
+VAR TopHours =
+    CALCULATE ( [Content Watch Hours], TopTitles )
+RETURN
+    DIVIDE ( TopHours, [Content Watch Hours] ) * 100
+
+
+// -----------------------------------------------------------------------------
+// fact_subscription — MRR movement
+//
+// Grain is one row per contract, so a subscription active across twelve months is
+// one row, not twelve. These measures read the contract boundaries; they do not
+// expand to a daily snapshot.
+// -----------------------------------------------------------------------------
+
+Subscriptions = COUNTROWS ( fact_subscription )
+
+// date_key is started_on, so the active date relationship already scopes this to
+// "started in the period". No extra filtering needed.
+New Subscriptions = [Subscriptions]
+
+// Cancellations are dated by ended_on, NOT by date_key. This needs a second,
+// INACTIVE relationship in the model:
+//
+//     fact_subscription[ended_on]  ->  dim_date[date_key]      (inactive)
+//
+// and USERELATIONSHIP to activate it for this measure only. Without that second
+// relationship this measure returns an error, which is the correct failure mode —
+// the alternative implementations are worse:
+//
+//   * filtering on ended_on with the active relationship still live counts
+//     contracts that STARTED in the period and ended at any time, ever;
+//   * REMOVEFILTERS(dim_date) counts every cancellation in the dataset and
+//     ignores the slicer entirely, while still being named "in period".
+//
+// Both return a plausible number for the wrong question. See docs/powerbi.md for
+// the relationship setup.
+Cancelled Subscriptions =
+CALCULATE (
+    COUNTROWS ( fact_subscription ),
+    USERELATIONSHIP ( fact_subscription[ended_on], dim_date[date_key] ),
+    KEEPFILTERS ( NOT ISBLANK ( fact_subscription[ended_on] ) )
+)
+
+Cancelled MRR =
+CALCULATE (
+    SUM ( fact_subscription[mrr_usd] ),
+    USERELATIONSHIP ( fact_subscription[ended_on], dim_date[date_key] ),
+    KEEPFILTERS ( NOT ISBLANK ( fact_subscription[ended_on] ) )
+)
+
+// Net MRR movement in the period: what started minus what ended. The API's
+// /monetization/mrr-movement returns a full waterfall (opening, new, reactivation,
+// expansion, contraction, churn, closing) that balances to within 0.02; this is
+// the two-term summary a BI card wants.
+Net MRR Movement =
+[New MRR] - [Cancelled MRR]
+
+Open Subscriptions =
+CALCULATE (
+    COUNTROWS ( fact_subscription ),
+    REMOVEFILTERS ( dim_date ),
+    KEEPFILTERS ( fact_subscription[is_open] = TRUE )
+)
+
+New MRR = SUM ( fact_subscription[mrr_usd] )
+
+Avg Contract MRR = AVERAGE ( fact_subscription[mrr_usd] )
+
+// Mean completed contract length. BLANK for running contracts by construction, and
+// AVERAGE skips them — a running subscription has no length yet, and counting it
+// as its current age would understate the true mean.
+Avg Contract Days =
+AVERAGE ( fact_subscription[duration_days] )
+
+Annual Plan Share % =
+DIVIDE (
+    CALCULATE (
+        COUNTROWS ( fact_subscription ),
+        KEEPFILTERS ( fact_subscription[billing_period] = "annual" )
+    ),
+    [Subscriptions]
+) * 100
+
+
+// -----------------------------------------------------------------------------
+// fact_experiment_assignment — exposure only
+//
+// Deliberately no verdict, no p-value, no confidence interval. The two-proportion
+// z-test, Wilson intervals and observed power live in app/services/stats.py and are
+// unit-tested against closed forms. Reimplementing them in DAX would produce a
+// second implementation that drifts from the first, and the drift would surface as
+// two dashboards disagreeing about whether a test won.
+//
+// For significance, call GET /api/v1/experiments/{key}/results. These measures
+// answer "who was exposed", which is what a BI model is good at.
+// -----------------------------------------------------------------------------
+
+Assignments = COUNTROWS ( fact_experiment_assignment )
+
+Assigned Users = DISTINCTCOUNT ( fact_experiment_assignment[user_key] )
+
+Control Users =
+CALCULATE (
+    [Assigned Users],
+    KEEPFILTERS ( fact_experiment_assignment[is_control] = TRUE )
+)
+
+Variant Users =
+[Assigned Users] - [Control Users]
+
+Experiments Running =
+CALCULATE (
+    DISTINCTCOUNT ( fact_experiment_assignment[experiment_code] ),
+    KEEPFILTERS ( fact_experiment_assignment[experiment_status] = "running" )
+)
+
+// Smallest arm in the filter context, against MIN_ARM_SIZE = 30 in the API. Below
+// that the normal approximation is not trustworthy and the API reports
+// "underpowered" rather than a verdict. Every arm at the small profile is 12-65
+// users, so this is usually the number that explains why nothing is significant.
+Smallest Arm =
+MINX (
+    VALUES ( fact_experiment_assignment[variant] ),
+    CALCULATE ( DISTINCTCOUNT ( fact_experiment_assignment[user_key] ) )
+)
+
+Arm Meets Minimum =
+IF ( [Smallest Arm] >= 30, "Yes", "No — underpowered" )
