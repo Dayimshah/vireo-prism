@@ -6,7 +6,14 @@ build-backend = "setuptools.build_meta"
 name = "prism"
 version = "1.0.0"
 description = "Prism — the internal product analytics platform for Vireo, a fictional streaming service."
-readme = "../README.md"
+# No `readme` key, deliberately. It used to read `readme = "../README.md"`, which
+# broke `pip install -e .` outright: setuptools' `_assert_local` refuses any path
+# outside the project root, so the build failed with
+# `Cannot access '.../backend/../README.md'` before dependencies were resolved.
+# This never surfaced locally because the Docker image was built from a cached
+# layer and the test suite ran inside it, never doing a fresh editable install.
+# The key only populates `long_description` for a package that is never published,
+# so omitting it costs nothing. The project README lives at the repository root.
 requires-python = ">=3.12,<3.13"
 license = { text = "MIT" }
 authors = [{ name = "Vireo Data Platform" }]
