@@ -59,3 +59,20 @@ backend/seeder/.cache/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# ---------------------------------------------------------------------------
+# Local probe scratch
+#
+# Debugging this stack means dumping openapi.json, filter vocabularies and query
+# shapes to disk to diff them. Four such files (_openapi.json, _filters.json,
+# _openapi_probe.json, .phase11-scratch/) had to be deleted by hand before the
+# first commit; these patterns stop the next session leaving the same litter.
+#
+# Verified against the tracked tree: no real file matches either pattern, so
+# nothing legitimate is shadowed. Keep the leading underscore convention for
+# throwaway dumps and they stay out of git automatically.
+# ---------------------------------------------------------------------------
+_*.json
+_*.txt
+*-scratch/
+.*-scratch/
