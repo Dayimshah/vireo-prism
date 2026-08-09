@@ -71,9 +71,12 @@ COPY --chown=prism:prism pyproject.toml ruff.toml ./
 COPY --chown=prism:prism app ./app
 COPY --chown=prism:prism seeder ./seeder
 COPY --chown=prism:prism tests ./tests
+COPY --chown=prism:prism docker-entrypoint.sh /usr/local/bin/docker-entrypoint
 
 # Writable mount point for the generated Plotly data-quality report.
-RUN mkdir -p /app/docs && chown prism:prism /app/docs
+RUN mkdir -p /app/docs \
+ && chown prism:prism /app/docs \
+ && chmod 755 /usr/local/bin/docker-entrypoint
 
 USER prism
 EXPOSE 8000
@@ -86,5 +89,7 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=40s --retries=5 \
 # Render can set PRISM_SEED_ON_START=true for one deployment to initialise a
 # fresh remote database without requiring an interactive shell. Remove the
 # variable (or set it to false) immediately afterwards: seeding truncates and
-# regenerates all synthetic data.
-CMD ["sh", "-c", "set -e; alembic upgrade head; if [ \"${PRISM_SEED_ON_START:-false}\" = \"true\" ]; then python -m seeder --profile small --truncate; fi; exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# regenerates all synthetic data. The entrypoint runs even if the host
+# overrides this CMD.
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
