@@ -243,7 +243,14 @@ class ApiSettings(BaseSettings):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def cors_origin_list(self) -> list[str]:
-        """Return CORS origins as a de-duplicated, order-preserving list."""
+        """Return CORS origins as a de-duplicated, order-preserving list.
+
+        A single ``*`` means allow all origins (useful for portfolio deployments
+        where preview URLs are unpredictable).
+        """
+        stripped = self.cors_origins.strip()
+        if stripped == "*":
+            return ["*"]
         seen: dict[str, None] = {}
         for raw in self.cors_origins.split(","):
             origin = raw.strip().rstrip("/")
