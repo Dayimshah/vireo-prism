@@ -111,8 +111,13 @@ class DatabaseSettings(BaseSettings):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def async_dsn(self) -> str:
-        """Return the SQLAlchemy async DSN used by the API (asyncpg driver)."""
-        base = str(
+        """Return the SQLAlchemy async DSN used by the API (asyncpg driver).
+
+        Note: asyncpg does NOT support the ``sslmode`` query parameter. SSL is
+        handled via ``connect_args={"ssl": True}`` in the engine configuration
+        (see ``app/db/session.py``). The DSN is kept clean of query params.
+        """
+        return str(
             PostgresDsn.build(
                 scheme="postgresql+asyncpg",
                 username=self.user,
@@ -122,7 +127,6 @@ class DatabaseSettings(BaseSettings):
                 path=self.name,
             )
         )
-        return base + self._ssl_query()
 
     @computed_field  # type: ignore[prop-decorator]
     @property
