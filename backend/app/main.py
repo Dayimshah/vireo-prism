@@ -294,6 +294,9 @@ def _register_middleware(application: FastAPI, cors_origins: list[str]) -> None:
     application.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins,
+        # Allow Vercel preview deploys (unique hash per deploy) in addition to the
+        # explicit origins list.
+        allow_origin_regex=r"https://vireo-prism[a-z0-9-]*\.vercel\.app",
         allow_credentials=False,
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["X-API-Key", "X-Request-ID", "Content-Type"],
