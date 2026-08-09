@@ -1,0 +1,7 @@
+# Force LF for shell scripts — they run in Linux containers regardless of
+# which OS committed them.
+*.sh text eol=lf
+docker-entrypoint.sh text eol=lf
+
+# Keep everything else using Git's default auto-detection.
+* text=auto
