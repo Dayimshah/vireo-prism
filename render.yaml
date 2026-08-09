@@ -1,0 +1,70 @@
+# ===========================================================================
+# Render Blueprint — Prism API (backend only)
+# ---------------------------------------------------------------------------
+# Deploy: connect this repo on Render and it picks up this file automatically.
+#
+# The frontend is deployed on Vercel (see vercel.json), and the database is a
+# Neon PostgreSQL instance configured via environment variables.
+#
+# After the FIRST successful deploy, remove PRISM_SEED_ON_START or set it to
+# "false" — it truncates and regenerates all data on every restart.
+# ===========================================================================
+
+services:
+  - type: web
+    name: vireo-prism-api
+    runtime: docker
+    repo: https://github.com/YOUR_USERNAME/vireo-prism  # <-- update this
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    region: ohio  # closest to Neon us-east-2
+    envVars:
+      # --- Environment ---
+      - key: PRISM_ENV
+        value: production
+      - key: PRISM_DEBUG
+        value: "false"
+      - key: PRISM_LOG_LEVEL
+        value: INFO
+      - key: PRISM_LOG_JSON
+        value: "true"
+
+      # --- Database (Neon) ---
+      - key: PRISM_DB__HOST
+        sync: false  # set manually in Render dashboard
+      - key: PRISM_DB__PORT
+        value: "5432"
+      - key: PRISM_DB__USER
+        sync: false
+      - key: PRISM_DB__PASSWORD
+        sync: false
+      - key: PRISM_DB__NAME
+        sync: false
+      - key: PRISM_DB__SSLMODE
+        value: require
+      - key: PRISM_DB__POOL_SIZE
+        value: "5"
+      - key: PRISM_DB__MAX_OVERFLOW
+        value: "10"
+      - key: PRISM_DB__STATEMENT_TIMEOUT_MS
+        value: "30000"
+
+      # --- Redis (disabled — no Redis on free tier) ---
+      - key: PRISM_REDIS__ENABLED
+        value: "false"
+
+      # --- Cache (local LRU only) ---
+      - key: PRISM_CACHE__ENABLED
+        value: "true"
+
+      # --- API ---
+      - key: PRISM_API__CORS_ORIGINS
+        sync: false  # set to your Vercel frontend URL
+      - key: PRISM_API__ADMIN_KEY
+        generateValue: true
+
+      # --- Seeding (set to true for first deploy, then remove) ---
+      - key: PRISM_SEED_ON_START
+        value: "true"
