@@ -148,11 +148,12 @@ export class ProblemError extends Error {
     return new ProblemError(
       {
         type: ProblemType.network,
-        title: 'Cannot reach the API',
+        title: 'Waking up the server...',
         status: 0,
         detail:
-          `No response from ${url}. The API may be stopped, unreachable, or rejecting ` +
-          `this origin via CORS — a browser reports all three the same way. (${reason})`,
+          `The backend is hosted on a free tier and sleeps after inactivity. ` +
+          `It typically wakes up in 30–60 seconds. Please wait and the data will load automatically. ` +
+          `— Dayim Shah`,
         instance: url,
       },
       { status: 0 },

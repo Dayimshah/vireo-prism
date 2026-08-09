@@ -116,7 +116,7 @@ export function ServiceStatus() {
             )}
           />
           <span className="hidden text-2xs text-muted-foreground lg:inline">
-            {presentation?.label ?? (health.isError ? 'Unreachable' : 'Checking…')}
+            {presentation?.label ?? (health.isError ? 'Waking up…' : 'Checking…')}
           </span>
         </Button>
       </PopoverTrigger>
@@ -133,16 +133,16 @@ export function ServiceStatus() {
             ) : (
               <Badge variant="muted">
                 {health.isError ? <CircleX className="size-3" /> : <CircleHelp className="size-3" />}
-                {health.isError ? 'Unreachable' : 'Unknown'}
+                {health.isError ? 'Waking up…' : 'Unknown'}
               </Badge>
             )}
           </div>
 
           {health.isError && (
-            <p className="text-2xs text-negative">
-              {health.error instanceof ProblemError
-                ? health.error.message
-                : 'The API could not be reached.'}
+            <p className="text-2xs text-muted-foreground">
+              The backend runs on a free server and sleeps after inactivity.
+              It wakes up in 30–60 seconds — please wait, data will load automatically.
+            </p>
             </p>
           )}
 
