@@ -83,4 +83,8 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=40s --retries=5 \
 
 # Overridden by docker-compose (which runs migrations first). This default makes
 # `docker run` alone still produce a working API.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Render can set PRISM_SEED_ON_START=true for one deployment to initialise a
+# fresh remote database without requiring an interactive shell. Remove the
+# variable (or set it to false) immediately afterwards: seeding truncates and
+# regenerates all synthetic data.
+CMD ["sh", "-c", "set -e; alembic upgrade head; if [ \"${PRISM_SEED_ON_START:-false}\" = \"true\" ]; then python -m seeder --profile small --truncate; fi; exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
