@@ -305,7 +305,7 @@ own work stops being trustworthy is most of the skill.
 
 **Looking for roles in:** Data Engineering, Backend Development, Full-Stack Development, Analytics Engineering.
 
-Happy to talk about any of it — reach me on [LinkedIn](https://www.linkedin.com/in/dayimshah) or [GitHub](https://github.com/Dayimshah).
+Happy to talk about any of it — reach me on [LinkedIn](https://www.linkedin.com/in/dayim-shah-612b03204) or [GitHub](https://github.com/Dayimshah).
 
 ---
 
