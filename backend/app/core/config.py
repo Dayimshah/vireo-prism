@@ -86,6 +86,10 @@ class DatabaseSettings(BaseSettings):
     password: str = "prism"
     name: str = "vireo"
 
+    #: SSL mode for the connection. Set to ``require`` for cloud databases
+    #: (Neon, Supabase, RDS, etc.) that mandate encrypted connections.
+    sslmode: str = ""
+
     pool_size: int = Field(default=10, ge=1, le=100)
     max_overflow: int = Field(default=20, ge=0, le=200)
     pool_timeout_seconds: int = Field(default=30, ge=1, le=300)
@@ -98,11 +102,17 @@ class DatabaseSettings(BaseSettings):
     #: Echo every emitted statement. Extremely noisy; debugging only.
     echo_sql: bool = False
 
+    def _ssl_query(self) -> str:
+        """Return the query string portion for SSL, or empty string."""
+        if self.sslmode:
+            return f"?sslmode={self.sslmode}"
+        return ""
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def async_dsn(self) -> str:
         """Return the SQLAlchemy async DSN used by the API (asyncpg driver)."""
-        return str(
+        base = str(
             PostgresDsn.build(
                 scheme="postgresql+asyncpg",
                 username=self.user,
@@ -112,12 +122,13 @@ class DatabaseSettings(BaseSettings):
                 path=self.name,
             )
         )
+        return base + self._ssl_query()
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def sync_dsn(self) -> str:
         """Return the synchronous DSN used by Alembic and the seeder (psycopg)."""
-        return str(
+        base = str(
             PostgresDsn.build(
                 scheme="postgresql+psycopg",
                 username=self.user,
@@ -127,6 +138,7 @@ class DatabaseSettings(BaseSettings):
                 path=self.name,
             )
         )
+        return base + self._ssl_query()
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -139,7 +151,7 @@ class DatabaseSettings(BaseSettings):
         malformed connection string. The seeder connects directly, so it needs
         this form.
         """
-        return str(
+        base = str(
             PostgresDsn.build(
                 scheme="postgresql",
                 username=self.user,
@@ -149,6 +161,7 @@ class DatabaseSettings(BaseSettings):
                 path=self.name,
             )
         )
+        return base + self._ssl_query()
 
     @computed_field  # type: ignore[prop-decorator]
     @property

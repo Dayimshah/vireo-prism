@@ -133,6 +133,9 @@ def create_engine() -> AsyncEngine:
             # invalidate cached plans when a partition is added, producing
             # InvalidCachedStatementError on an otherwise valid query.
             "statement_cache_size": 0,
+            # Cloud databases (Neon, Supabase, RDS) require TLS. asyncpg uses
+            # a boolean `ssl` argument rather than the libpq sslmode string.
+            **({"ssl": True} if settings.db.sslmode == "require" else {}),
         },
     )
 
