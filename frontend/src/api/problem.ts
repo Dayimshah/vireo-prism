@@ -143,8 +143,7 @@ export class ProblemError extends Error {
    * — `fetch` rejects with an opaque `TypeError` in every one of them, by design, so that
    * a page cannot probe another origin's reachability.
    */
-  static fromNetworkFailure(cause: unknown, url: string): ProblemError {
-    const reason = cause instanceof Error ? cause.message : String(cause)
+  static fromNetworkFailure(_cause: unknown, url: string): ProblemError {
     return new ProblemError(
       {
         type: ProblemType.network,

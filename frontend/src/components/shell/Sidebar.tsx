@@ -1,3 +1,4 @@
+import { Info } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 
 import { APP_NAME, ORG_NAME } from '@/api/config'
@@ -55,6 +56,9 @@ export function Sidebar({
         </div>
       </div>
 
+      {/* The analytics pages come from the registry; everything in the scroll area is one of
+          the eleven. About is deliberately not among them — it owns no endpoint — so it sits
+          in the footer below, outside the registry-driven list. */}
       <ScrollArea className="flex-1">
         <ul className="space-y-0.5 p-2">
           {ROUTES.map((entry) => (
@@ -102,6 +106,30 @@ export function Sidebar({
           ))}
         </ul>
       </ScrollArea>
+
+      {/* Pinned below the scrollable page list: About and the copyright live here, not among
+          the dashboards. One link, so it is a footer rather than a second nav section. */}
+      <div className="shrink-0 border-t p-2">
+        <NavLink
+          to="/about"
+          onClick={onNavigate}
+          className={({ isActive }) =>
+            cn(
+              'flex items-center gap-2.5 rounded-md px-2 py-2 text-xs transition-colors',
+              isActive
+                ? 'bg-accent font-semibold text-accent-foreground'
+                : 'font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground',
+            )
+          }
+        >
+          {({ isActive }) => (
+            <>
+              <Info className={cn('size-4 shrink-0', isActive ? 'text-primary' : '')} />
+              <span>About &amp; credits</span>
+            </>
+          )}
+        </NavLink>
+      </div>
     </nav>
   )
 }

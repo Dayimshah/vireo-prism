@@ -47,6 +47,12 @@ export function AppLayout() {
 
   const route = findRoute(location.pathname)
 
+  // About reads no API data, so it must not sit behind the `/meta/bounds` gate or the
+  // filter bar: a cold or down backend should still be able to show the page that explains
+  // what this app is. It is not in ROUTES — see the note in AboutPage — so it gets its own
+  // header here rather than one from `findRoute`.
+  const isAbout = location.pathname === '/about'
+
   // The tab title names the page, so a reader with several dashboards open can tell them
   // apart. Set in an effect rather than by a helmet library: this is two lines and one
   // dependency avoided.
@@ -98,19 +104,33 @@ export function AppLayout() {
             within its own container. */}
         <main className="flex-1 overflow-auto">
           <div className="mx-auto max-w-[100rem] space-y-4 p-3 sm:p-4">
-            {route && (
-              <div>
-                <h1 className="text-lg font-semibold leading-tight">{route.label}</h1>
-                <p className="mt-0.5 text-xs text-muted-foreground">{route.description}</p>
-              </div>
-            )}
+            {isAbout ? (
+              <>
+                <div>
+                  <h1 className="text-lg font-semibold leading-tight">About</h1>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    What this project is, how it is built, and the fine print.
+                  </p>
+                </div>
+                {/* No filter bar and no metadata gate: this page has nothing to filter and
+                    nothing to wait for. */}
+                <Outlet />
+              </>
+            ) : (
+              <>
+                {route && (
+                  <div>
+                    <h1 className="text-lg font-semibold leading-tight">{route.label}</h1>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{route.description}</p>
+                  </div>
+                )}
 
-            <FilterBar />
+                <FilterBar />
 
-            {/* Order matters: unseeded before error. An unseeded database also makes the
-                analytics queries fail, and reporting a downstream failure would send a
-                reader to debug a query when the fix is one command. */}
-            {isUnseeded ? (
+                {/* Order matters: unseeded before error. An unseeded database also makes the
+                    analytics queries fail, and reporting a downstream failure would send a
+                    reader to debug a query when the fix is one command. */}
+                {isUnseeded ? (
               <UnseededState />
             ) : metaError ? (
               <ErrorState
@@ -123,10 +143,12 @@ export function AppLayout() {
                       ProblemError.fromNetworkFailure(metaError, '/meta/bounds')
                 }
               />
-            ) : isLoadingMeta ? (
-              <LoadingState rows={4} />
-            ) : (
-              <Outlet />
+                ) : isLoadingMeta ? (
+                  <LoadingState rows={4} />
+                ) : (
+                  <Outlet />
+                )}
+              </>
             )}
           </div>
         </main>

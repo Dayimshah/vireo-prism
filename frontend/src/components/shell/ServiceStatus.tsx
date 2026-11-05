@@ -143,7 +143,6 @@ export function ServiceStatus() {
               The backend runs on a free server and sleeps after inactivity.
               It wakes up in 30–60 seconds — please wait, data will load automatically.
             </p>
-            </p>
           )}
 
           {status && (

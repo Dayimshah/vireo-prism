@@ -7,6 +7,7 @@ import { AppLayout } from '@/components/shell/AppLayout'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { AboutPage } from '@/routes/pages/AboutPage'
 import { AudiencePage } from '@/routes/pages/AudiencePage'
 import { CohortsPage } from '@/routes/pages/CohortsPage'
 import { ContentPage } from '@/routes/pages/ContentPage'
@@ -112,6 +113,12 @@ export function App() {
                       />
                     )
                   })}
+
+                  {/* Not a registry entry: About owns no API endpoint, so keeping it out of
+                      ROUTES preserves the 50-page-owned coverage reconciliation. It still
+                      renders inside the shell. AppLayout lets it skip the metadata gate, so
+                      it explains the project even when the API is cold. */}
+                  <Route path="/about" element={<AboutPage />} />
 
                   {/* Inside the layout, so a mistyped URL still shows the navigation the
                       reader needs to get out of it. */}
