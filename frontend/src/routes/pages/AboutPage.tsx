@@ -22,14 +22,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
  */
 export function AboutPage() {
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       <Card>
         <CardHeader>
           <CardTitle className="text-sm">
             {APP_NAME} — product analytics for {ORG_NAME}
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3 text-xs leading-relaxed text-muted-foreground">
+        <CardContent className="max-w-prose space-y-3 text-xs leading-relaxed text-muted-foreground">
           <p>
             {APP_NAME} is a full-stack analytics platform built over {ORG_NAME}, a fictional
             streaming service. It is a portfolio project: the data is synthetic, but the
@@ -73,7 +73,7 @@ export function AboutPage() {
         <CardHeader>
           <CardTitle className="text-sm">How I think about it</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3 text-xs leading-relaxed text-muted-foreground">
+        <CardContent className="max-w-prose space-y-3 text-xs leading-relaxed text-muted-foreground">
           <p>
             <span className="font-medium text-foreground">Correctness before cleverness.</span>{' '}
             A number that is fast and wrong is worse than one that is slow and right. The tests
@@ -93,7 +93,7 @@ export function AboutPage() {
         <CardHeader>
           <CardTitle className="text-sm">Site &amp; copyright</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3 text-2xs leading-relaxed text-muted-foreground">
+        <CardContent className="max-w-prose space-y-3 text-2xs leading-relaxed text-muted-foreground">
           <p>
             <span className="font-medium text-foreground">
               © {new Date().getFullYear()} Dayim Shah. All rights reserved.
